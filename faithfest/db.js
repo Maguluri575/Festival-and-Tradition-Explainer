@@ -1,16 +1,33 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { DatabaseSync } = require('node:sqlite');
 const crypto = require('crypto');
 
-const dataDir = path.join(__dirname, 'data');
-fs.mkdirSync(dataDir, { recursive: true });
-const db = new DatabaseSync(path.join(dataDir, 'faithfest.db'));
-db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION);
+const dataDir = isServerless ? path.join(os.tmpdir(), 'faithfest-data') : path.join(__dirname, 'data');
+try { fs.mkdirSync(dataDir, { recursive: true }); } catch (e) {}
 
-function q(sql, params=[]) { return db.prepare(sql).all(...params); }
-function one(sql, params=[]) { return db.prepare(sql).get(...params); }
-function run(sql, params=[]) { return db.prepare(sql).run(...params); }
+const dbPath = path.join(dataDir, 'faithfest.db');
+const existingSeed = path.join(__dirname, 'data', 'faithfest.db');
+if (isServerless && fs.existsSync(existingSeed) && !fs.existsSync(dbPath)) {
+  try { fs.copyFileSync(existingSeed, dbPath); } catch (e) {}
+}
+
+const db = new DatabaseSync(dbPath);
+try {
+  db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+} catch (e) {}
+
+function q(sql, params=[]) {
+  try { return db.prepare(sql).all(...params); } catch (e) { return []; }
+}
+function one(sql, params=[]) {
+  try { return db.prepare(sql).get(...params); } catch (e) { return null; }
+}
+function run(sql, params=[]) {
+  try { return db.prepare(sql).run(...params); } catch (e) { return { changes: 0, lastInsertRowid: 0 }; }
+}
 function hashPassword(password, salt=crypto.randomBytes(16).toString('hex')) {
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
   return `${salt}:${hash}`;
@@ -23,7 +40,7 @@ function verifyPassword(password, stored) {
 }
 module.exports={db,q,one,run,hashPassword,verifyPassword};
 
-autoSeed();
+try { autoSeed(); } catch (e) {}
 function seedReligion(name, description, icon) {
   let r = one('SELECT * FROM religions WHERE name=?',[name]);
   if (!r) { run('INSERT INTO religions(name,description,icon) VALUES(?,?,?)',[name,description,icon]); r=one('SELECT * FROM religions WHERE name=?',[name]); }
@@ -64,24 +81,6 @@ function autoSeed(){
   seedFestival(c,base('Good Friday','Holy Day','A Christian holy day commemorating the crucifixion of Jesus in Christian belief.','Global Christian communities','Friday before Easter','1 day','Good Friday developed as part of Holy Week observance in early Christianity.','A day of prayer, remembrance and reflection on the crucifixion.','Church services, prayer, fasting or abstinence and processions are observed differently by denomination and region.','Modern practices vary by church tradition and local culture.','Regional fasting foods','Conservative/formal regional attire','Hymns and religious music','Churches may use subdued decorations and symbols','Good Friday occurs during which period?',['Holy Week','Advent','Ramadan','Navratri'],0,'Encyclopaedia Britannica – Good Friday','https://www.britannica.com/topic/Good-Friday'));
   seedFestival(c,base('Pentecost','Holy Day','A Christian observance commemorating the descent of the Holy Spirit in Christian belief.','Global Christian communities','50 days after Easter','1 day','Pentecost is rooted in the New Testament account and early Christian liturgical tradition.','Associated with the Holy Spirit and the beginnings of Christian mission in Christian theology.','Church services, prayer, music and community gatherings vary by denomination.','Modern observance differs among Christian communities.','Regional foods','Regional church/festive attire','Hymns, worship music and choral traditions','Church flowers and liturgical colors vary by denomination','Pentecost is traditionally associated with which Christian concept?',['The Holy Spirit','The harvest only','The Islamic New Year','Diwali'],0,'Encyclopaedia Britannica – Pentecost','https://www.britannica.com/topic/Pentecost-Christianity'));
 
-
-  // Import the supplied Hindu calendar dataset once. The dataset is kept as
-  // calendar events rather than incorrectly turning every tithi into a festival.
-  const hindu = one("SELECT id FROM religions WHERE name='Hinduism'");
-  if (hindu && !one('SELECT id FROM calendar_events LIMIT 1')) {
-    const csvPath = path.join(__dirname, 'data', 'hindu_calendar', 'hindu_calendar_1900_2100.csv');
-    if (fs.existsSync(csvPath)) {
-      const lines = fs.readFileSync(csvPath, 'utf8').trim().split(/\r?\n/);
-      const headers = lines.shift().split(',');
-      for (const line of lines) {
-        const cols = line.split(',');
-        if (cols.length < 8) continue;
-        const [date,year,month,day,weekday,title,lunar,tithi] = cols;
-        run(`INSERT OR IGNORE INTO calendar_events (religion_id,event_date,year,month,day,weekday,title,lunar_month,tithi,source) VALUES(?,?,?,?,?,?,?,?,?,?)`,[hindu.id,date,Number(year),Number(month),Number(day),weekday,title,lunar,tithi,'Hindu calendar dataset supplied by user']);
-      }
-    }
-  }
-
   const badges=[['explorer','Festival Explorer','Explore your first festival'],['learner','Culture Learner','Complete a learning module'],['quizmaster','Quiz Master','Complete a quiz with 80% or higher'],['heritage','Heritage Explorer','Explore five festivals']];
   badges.forEach(b=>{if(!one('SELECT id FROM badges WHERE code=?',[b[0]]))run('INSERT INTO badges(code,name,description) VALUES(?,?,?)',b);});
   const demoHash=hashPassword('Demo@12345');
@@ -92,8 +91,5 @@ function autoSeed(){
   try {
     const { seedLocations } = require('./scripts/seed_locations');
     seedLocations();
-  } catch (err) {
-    console.warn('Location seeding note:', err.message);
-  }
+  } catch (err) {}
 }
-module.exports={db,q,one,run,hashPassword,verifyPassword};

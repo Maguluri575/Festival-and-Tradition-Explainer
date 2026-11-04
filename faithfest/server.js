@@ -10,7 +10,22 @@ const JWT_SECRET=process.env.JWT_SECRET||'faithfest-development-secret-change-me
 function json(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function token(payload){const h=Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');const p=Buffer.from(JSON.stringify({...payload,exp:Math.floor(Date.now()/1000)+60*60*24})).toString('base64url');const s=crypto.createHmac('sha256',JWT_SECRET).update(h+'.'+p).digest('base64url');return h+'.'+p+'.'+s;}
 function auth(req){const a=req.headers.authorization||'';if(!a.startsWith('Bearer '))return null;const [h,p,s]=a.slice(7).split('.');try{const expected=crypto.createHmac('sha256',JWT_SECRET).update(h+'.'+p).digest('base64url');if(s!==expected)return null;const d=JSON.parse(Buffer.from(p,'base64url'));if(d.exp<Date.now()/1000)return null;return d;}catch{return null;}}
-async function body(req){let b='';for await(const c of req)b+=c;if(!b)return{};try{return JSON.parse(b)}catch{return null}}
+async function body(req){
+  if(req.body!==undefined && req.body!==null){
+    if(typeof req.body==='object') return req.body;
+    if(typeof req.body==='string'){
+      try { return JSON.parse(req.body); } catch { return null; }
+    }
+  }
+  let b='';
+  try {
+    for await(const c of req) b+=c;
+  } catch(e) {
+    return (req.body && typeof req.body==='object') ? req.body : null;
+  }
+  if(!b) return {};
+  try { return JSON.parse(b); } catch { return null; }
+}
 function event(userId,type,festivalId,meta={}){run('INSERT INTO analytics_events(user_id,event_type,festival_id,metadata_json) VALUES(?,?,?,?)',[userId||null,type,festivalId||null,JSON.stringify(meta)]);}
 function audit(userId,action,entityType,entityId,details={}){run('INSERT INTO audit_logs(user_id,action,entity_type,entity_id,details_json) VALUES(?,?,?,?,?)',[userId||null,action,entityType,entityId||null,JSON.stringify(details)]);}
 function sendError(res,status,msg){return json(res,status,{error:msg});}
@@ -198,7 +213,33 @@ async function route(req,res){
    return json(res, 500, { success: false, message: e.message });
   }
  }
- if(p==='/api/auth/register'&&method==='POST')return body(req).then(b=>{if(!b||!b.name||!b.email||!b.password)return sendError(res,400,'Name, email and password are required');if(b.password.length<8)return sendError(res,400,'Password must be at least 8 characters');if(one('SELECT id FROM users WHERE email=?',[b.email.toLowerCase()]))return sendError(res,409,'Email already registered');const targetRole=(b.role==='admin')?'admin':'user';const r=run('INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)',[b.name,b.email.toLowerCase(),hashPassword(b.password),targetRole]);const u2=one('SELECT id,name,email,role FROM users WHERE id=?',[r.lastInsertRowid]);return json(res,201,{user:u2,token:token({id:u2.id,role:u2.role,email:u2.email,name:u2.name})});});
+ if(p==='/api/auth/register'&&method==='POST')return body(req).then(async b=>{
+   if(!b||!b.name||!b.email||!b.password)return sendError(res,400,'Name, email and password are required');
+   if(b.password.length<8)return sendError(res,400,'Password must be at least 8 characters');
+   const email = String(b.email).toLowerCase().trim();
+   const name = String(b.name).trim();
+   const targetRole = (b.role==='admin')?'admin':'user';
+   const pwdHash = hashPassword(b.password);
+
+   try {
+     const { data: existing } = await supabase.from('users').select('id').eq('email', email).maybeSingle();
+     if (existing) return sendError(res, 409, 'Email already registered');
+     const { data: inserted, error: insErr } = await supabase.from('users').insert([{ name, email, password_hash: pwdHash, role: targetRole }]).select('id, name, email, role').maybeSingle();
+     if (!insErr && inserted) {
+       try { run('INSERT OR IGNORE INTO users(id, name, email, password_hash, role) VALUES(?,?,?,?,?)', [inserted.id, name, email, pwdHash, targetRole]); } catch(e) {}
+       return json(res, 201, { user: inserted, token: token({ id: inserted.id, role: inserted.role, email: inserted.email, name: inserted.name }) });
+     }
+   } catch(e) {}
+
+   try {
+     if(one('SELECT id FROM users WHERE email=?',[email]))return sendError(res,409,'Email already registered');
+     const r=run('INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)',[name,email,pwdHash,targetRole]);
+     const u2=one('SELECT id,name,email,role FROM users WHERE id=?',[r.lastInsertRowid]);
+     return json(res,201,{user:u2,token:token({id:u2.id,role:u2.role,email:u2.email,name:u2.name})});
+   } catch(err) {
+     return sendError(res, 500, 'Registration error: ' + err.message);
+   }
+ });
  if(p==='/api/auth/google/config'&&method==='GET')return json(res,200,{client_id:process.env.GOOGLE_CLIENT_ID||''});
   if(p==='/api/auth/google'&&method==='POST')return body(req).then(b=>{
     let email = '', name = '', picture = '', sub = '';
@@ -260,7 +301,30 @@ async function route(req,res){
       token: t
     });
   });
-  if(p==='/api/auth/login'&&method==='POST')return body(req).then(b=>{const u2=one('SELECT * FROM users WHERE email=?',[String(b?.email||'').toLowerCase()]);if(!u2||!verifyPassword(b.password||'',u2.password_hash))return sendError(res,401,'Invalid email or password');return json(res,200,{user:{id:u2.id,name:u2.name,email:u2.email,role:u2.role},token:token({id:u2.id,role:u2.role,email:u2.email,name:u2.name})});});
+  if(p==='/api/auth/login'&&method==='POST')return body(req).then(async b=>{
+   const email = String(b?.email||'').toLowerCase().trim();
+   const password = String(b?.password||'');
+   if(!email || !password) return sendError(res, 400, 'Email and password are required');
+
+   let u2 = null;
+   try {
+     const { data, error } = await supabase.from('users').select('*').eq('email', email).maybeSingle();
+     if (!error && data) u2 = data;
+   } catch(e) {}
+
+   if (!u2) {
+     try { u2 = one('SELECT * FROM users WHERE email=?', [email]); } catch(e) {}
+   }
+
+   if(!u2 || !verifyPassword(password, u2.password_hash)) {
+     return sendError(res, 401, 'Invalid email or password');
+   }
+
+   return json(res, 200, {
+     user: { id: u2.id, name: u2.name, email: u2.email, role: u2.role },
+     token: token({ id: u2.id, role: u2.role, email: u2.email, name: u2.name })
+   });
+ });
  if(p==='/api/me'){if(!user)return sendError(res,401,'Authentication required');const u2=one('SELECT id,name,email,role,created_at FROM users WHERE id=?',[user.id]);return json(res,200,{user:u2});}
  if(p==='/api/religions'&&method==='GET'){
   const data = await getSupabaseReligions();
@@ -724,7 +788,17 @@ async function adminRoute(req,res,u,user){
  return sendError(res,404,'Admin endpoint not found');
 }
 function serveStatic(req,res,p){let file=p==='/'?'/index.html':p;file=path.normalize(file).replace(/^([.][.][/\\])+/, '');const fp=path.join(PUBLIC,file);if(!fp.startsWith(PUBLIC)||!fs.existsSync(fp)||fs.statSync(fp).isDirectory())return sendError(res,404,'Not found');const ext=path.extname(fp);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml'};res.writeHead(200,{'Content-Type':types[ext]||'application/octet-stream','Cache-Control':'no-cache, no-store, must-revalidate','Pragma':'no-cache','Expires':'0'});fs.createReadStream(fp).pipe(res);}
-const server=http.createServer((req,res)=>{try{Promise.resolve(route(req,res)).catch(e=>{console.error(e);if(!res.headersSent)sendError(res,500,'Internal server error')})}catch(e){console.error(e);sendError(res,500,'Internal server error')}});
+const server=http.createServer((req,res)=>{
+  try {
+    Promise.resolve(route(req,res)).catch(e=>{
+      console.error(`[Server Error] ${req.method} ${req.url}:`, e);
+      if(!res.headersSent) sendError(res,500, e.message || 'Internal server error');
+    });
+  } catch(e) {
+    console.error(`[Server Sync Error] ${req.method} ${req.url}:`, e);
+    if(!res.headersSent) sendError(res,500, e.message || 'Internal server error');
+  }
+});
 server.listen(PORT,()=>{
   console.log(`FaithFest running at http://localhost:${PORT}`);
   (async () => {
