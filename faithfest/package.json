@@ -1,0 +1,19 @@
+{
+  "name": "faithfest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FaithFest - Interactive Religious Festival & Cultural Heritage Explorer",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node tests/smoke.js",
+    "audit": "node tests/comprehensive_audit.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "dotenv": "^18.0.9"
+  }
+}

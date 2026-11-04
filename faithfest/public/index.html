@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#10152f"><meta name="description" content="FaithFest — Interactive Religious Festival & Cultural Heritage Explorer">
+<link rel="manifest" href="/manifest.json"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="/styles.css?v=2.4"><title>FaithFest</title>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(regs) {
+    for (var reg of regs) { reg.unregister(); }
+  });
+}
+if (window.caches) {
+  caches.keys().then(function(names) {
+    for (var name of names) { caches.delete(name); }
+  });
+}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="/app.js?v=2.4"></script>
+</body></html>

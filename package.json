@@ -1,0 +1,12 @@
+{
+  "name": "faithfest-enhanced",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FaithFest - Interactive Religious Festival & Cultural Heritage Explorer",
+  "scripts": {
+    "start": "npm start --prefix faithfest",
+    "dev": "npm run dev --prefix faithfest",
+    "test": "npm test --prefix faithfest",
+    "audit": "npm run audit --prefix faithfest"
+  }
+}
