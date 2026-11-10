@@ -265,7 +265,7 @@ class HeritageRAGEngine {
       this.buildIndex();
     }
 
-    const topK = options.topK || 5;
+    const topK = options.topK || Number(process.env.RAG_TOP_K || 5);
     const religionFilter = options.religion;
     const expandedQuery = this.expandQuery(query);
     const queryTokens = this.tokenize(expandedQuery);
@@ -274,9 +274,9 @@ class HeritageRAGEngine {
       return [];
     }
 
-    // BM25 parameters
-    const k1 = 1.5;
-    const b = 0.75;
+    // BM25 parameters (configurable via environment variables)
+    const k1 = Number(process.env.RAG_BM25_K1 || 1.5);
+    const b = Number(process.env.RAG_BM25_B || 0.75);
     const scores = new Map(); // chunkIndex -> score
 
     queryTokens.forEach(term => {
@@ -339,3 +339,4 @@ module.exports = {
   ragEngine,
   HeritageRAGEngine
 };
+

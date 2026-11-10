@@ -32,7 +32,7 @@ class LLMService {
   async ask(query, options = {}) {
     const startTime = Date.now();
     const lang = options.lang || this.detectLanguage(query);
-    const topK = options.topK || 5;
+    const topK = options.topK || Number(process.env.RAG_TOP_K || 5);
 
     // 1. RAG Retrieval Step
     const retrievedChunks = ragEngine.retrieve(query, {
@@ -257,3 +257,4 @@ module.exports = {
   llmService,
   LLMService
 };
+
