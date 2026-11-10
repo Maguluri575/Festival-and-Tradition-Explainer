@@ -111,7 +111,7 @@ function nav() {
   if (isAuthPage) {
     return `<header class="nav"><div class="container navin" style="justify-content:flex-start;"><div style="display:flex; align-items:center; gap:14px;">${backBtnHtml}<a class="brand" href="#/"><span class="brandmark">✦</span><span>Faith<span>Fest</span></span></a></div></div></header>`;
   }
-  return `<header class="nav"><div class="container navin"><div style="display:flex; align-items:center; gap:14px;">${backBtnHtml}<a class="brand" href="#/"><span class="brandmark">✦</span><span>Faith<span>Fest</span></span></a></div><nav><a href="#/explore">${t('Explore')}</a><a href="#/calendar">${t('Calendar')}</a><a href="#/map">${t('Map')}</a><a href="#/compare">${t('Compare')}</a>${state.user ? `<a href="#/favorites">${t('Saved')}</a>` : ''}${state.user?.role === 'admin' ? `<a href="#/admin" onclick="openCmsDashboard('festivals');event.preventDefault();" class="cmsNavBtn ${isAdmActive ? 'active' : ''}" title="Admin CMS Portal"><span class="cmsNavIcon">✦</span> CMS</a>` : ''}</nav><div class="navActions"><select class="notranslate navLangSelect" onchange="setLang(this.value)" aria-label="Language"><option ${state.lang === 'English' ? 'selected' : ''}>English</option><option ${state.lang === 'Tamil' ? 'selected' : ''}>Tamil</option><option ${state.lang === 'Telugu' ? 'selected' : ''}>Telugu</option><option ${state.lang === 'Hindi' ? 'selected' : ''}>Hindi</option></select>${state.user ? `<span style="font-size:13px;color:var(--muted);font-weight:600;">${esc(state.user.name)}</span><button class="iconBtn" onclick="logout()" title="Logout">↪</button>` : `<a class="btn primary sm" href="#/login">${t('Login')}</a>`}</div></div></header>`;
+  return `<header class="nav"><div class="container navin"><div style="display:flex; align-items:center; gap:14px;">${backBtnHtml}<a class="brand" href="#/"><span class="brandmark">✦</span><span>Faith<span>Fest</span></span></a></div><nav><a href="#/explore">${t('Explore')}</a><a href="#/calendar">${t('Calendar')}</a><a href="#/map">${t('Map')}</a><a href="#/compare">${t('Compare')}</a><a href="#/ai-guide" class="aiGuideNavLink ${location.hash === '#/ai-guide' ? 'active' : ''}">✨ ${t('AI Guide')}</a>${state.user ? `<a href="#/favorites">${t('Saved')}</a>` : ''}${state.user?.role === 'admin' ? `<a href="#/admin" onclick="openCmsDashboard('festivals');event.preventDefault();" class="cmsNavBtn ${isAdmActive ? 'active' : ''}" title="Admin CMS Portal"><span class="cmsNavIcon">✦</span> CMS</a>` : ''}</nav><div class="navActions"><select class="notranslate navLangSelect" onchange="setLang(this.value)" aria-label="Language"><option ${state.lang === 'English' ? 'selected' : ''}>English</option><option ${state.lang === 'Tamil' ? 'selected' : ''}>Tamil</option><option ${state.lang === 'Telugu' ? 'selected' : ''}>Telugu</option><option ${state.lang === 'Hindi' ? 'selected' : ''}>Hindi</option></select>${state.user ? `<span style="font-size:13px;color:var(--muted);font-weight:600;">${esc(state.user.name)}</span><button class="iconBtn" onclick="logout()" title="Logout">↪</button>` : `<a class="btn primary sm" href="#/login">${t('Login')}</a>`}</div></div></header>`;
 }
 
 function layout(content, cls = '') {
@@ -3662,6 +3662,7 @@ function route(){
   if(h === '/map') return mapPage();
   if(h === '/favorites') return favorites();
   if(h === '/compare') return compare();
+  if(h === '/ai-guide') return aiGuidePage();
   if(h === '/login') return authPage('login');
   if(h === '/register') return authPage('register');
   if(h === '/admin') return admin();
@@ -3673,6 +3674,7 @@ function route(){
 }
 function safeRoute(){
   try {
+    initAiGuideWidget();
     const res = route();
     if (res && res.catch) {
       res.catch(err => {
@@ -3724,4 +3726,597 @@ if (state.lang && state.lang !== 'English') {
   setTimeout(() => {
     
   }, 300);
+}
+
+
+
+// ==========================================================================
+// FAITHFEST AI CULTURAL HERITAGE GUIDE (RAG & LLM INTEGRATION)
+// ==========================================================================
+
+const AI_DICT_EXTENSIONS = {
+  Telugu: {
+    "AI Guide": "AI గైడ్",
+    "Ask AI": "AI ని అడగండి",
+    "Ask AI Guide": "AI గైడ్‌ని అడగండి",
+    "AI Cultural Heritage Guide": "AI సాంస్కృతిక వారసత్వ గైడ్",
+    "Grounded in 82 Verified Festivals & 52 Sacred Sites across Hinduism, Islam, and Christianity.": "హిందూమతం, ఇస్లాం, క్రైస్తవ మతాలలోని 82 ధృవీకరించబడిన పండుగలు & 52 పవిత్ర స్థలాలపై ఆధారితం.",
+    "Ask anything about traditions, rituals, foods, clothing, calendar...": "సంప్రదాయాలు, ఆచారాలు, ఆహారాలు, దుస్తులు, క్యాలెండర్ వివరాలు అడగండి...",
+    "Explore with AI": "AI తో అన్వేషించండి",
+    "Quick Questions": "సత్వర ప్రశ్నలు",
+    "Clear Chat": "చాట్ తొలగించు",
+    "Copy": "కాపీ",
+    "Copied to clipboard": "క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది",
+    "Thinking...": "సమాచారాన్ని విశ్లేషిస్తోంది...",
+    "Sources & Citations": "మూలాలు & ఆధారాలు",
+    "Ask question": "ప్రశ్న అడగండి",
+    "Full Screen AI Guide": "పూర్తి స్క్రీన్ AI గైడ్",
+    "Heritage Topics": "సాంస్కృతిక విభాగాలు",
+    "All Religions": "అన్ని మతాలు",
+    "Close": "మూసివేయి"
+  },
+  Hindi: {
+    "AI Guide": "AI गाइड",
+    "Ask AI": "AI से पूछें",
+    "Ask AI Guide": "AI गाइड से पूछें",
+    "AI Cultural Heritage Guide": "AI सांस्कृतिक धरोहर गाइड",
+    "Grounded in 82 Verified Festivals & 52 Sacred Sites across Hinduism, Islam, and Christianity.": "हिन्दू धर्म, इस्लाम और ईसाई धर्म के 82 सत्यापित त्योहारों और 52 पवित्र स्थलों पर आधारित।",
+    "Ask anything about traditions, rituals, foods, clothing, calendar...": "परंपराओं, रीति-रिवाजों, व्यंजनों, वेशभूषा और कैलेंडर के बारे में पूछें...",
+    "Explore with AI": "AI के साथ अन्वेषण करें",
+    "Quick Questions": "त्वरित प्रश्न",
+    "Clear Chat": "चैट साफ़ करें",
+    "Copy": "कॉपी करें",
+    "Copied to clipboard": "क्लिपबोर्ड पर कॉपी किया गया",
+    "Thinking...": "जानकारी खोजी जा रही है...",
+    "Sources & Citations": "स्रोत और संदर्भ",
+    "Ask question": "प्रश्न पूछें",
+    "Full Screen AI Guide": "पूर्ण स्क्रीन AI गाइड",
+    "Heritage Topics": "सांस्कृतिक विषय",
+    "All Religions": "सभी धर्म",
+    "Close": "बंद करें"
+  },
+  Tamil: {
+    "AI Guide": "AI வழிகாட்டி",
+    "Ask AI": "AI யிடம் கேளுங்கள்",
+    "Ask AI Guide": "AI வழிகாட்டியிடம் கேளுங்கள்",
+    "AI Cultural Heritage Guide": "AI கலாச்சார பாரம்பரிய வழிகாட்டி",
+    "Grounded in 82 Verified Festivals & 52 Sacred Sites across Hinduism, Islam, and Christianity.": "இந்து, இஸ்லாம், கிறிஸ்தவத்தின் 82 சரிபார்க்கப்பட்ட பண்டிகைகள் & 52 புனித தளங்கள் அடிப்படையிலானது.",
+    "Ask anything about traditions, rituals, foods, clothing, calendar...": "பாரம்பரியங்கள், சடங்குகள், உணவுகள், உடைகள், நாட்காட்டி பற்றி கேளுங்கள்...",
+    "Explore with AI": "AI உடன் ஆராயுங்கள்",
+    "Quick Questions": "விரைவு வினாக்கள்",
+    "Clear Chat": "அரட்டையை அழிக்கவும்",
+    "Copy": "நகலெடு",
+    "Copied to clipboard": "நகலெடுக்கப்பட்டது",
+    "Thinking...": "சிந்திக்கிறது...",
+    "Sources & Citations": "மூலங்கள் & குறிப்புகள்",
+    "Ask question": "கேள்வி கேளுங்கள்",
+    "Full Screen AI Guide": "முழுத்திரை AI வழிகாட்டி",
+    "Heritage Topics": "கலாச்சார தலைப்புகள்",
+    "All Religions": "அனைத்து மதங்கள்",
+    "Close": "மூடு"
+  }
+};
+
+if (typeof DICT !== 'undefined') {
+  Object.keys(AI_DICT_EXTENSIONS).forEach(k => {
+    if (DICT[k]) Object.assign(DICT[k], AI_DICT_EXTENSIONS[k]);
+  });
+}
+
+const aiChatState = {
+  isOpen: false,
+  messages: [
+    {
+      role: 'bot',
+      text: "### 🌟 Welcome to the FaithFest AI Cultural Heritage Guide!\n\nI am grounded in **82 verified festivals**, **52 sacred sites**, traditional foods, rituals, attire, and calendar dates across **Hinduism, Islam, and Christianity**.\n\nAsk me anything in **English, తెలుగు, हिन्दी, or தமிழ்**!",
+      sources: [],
+      latency_ms: null,
+      timestamp: Date.now()
+    }
+  ],
+  loading: false,
+  selectedReligion: null,
+  activeAudioText: null
+};
+
+function renderAiMarkdown(text) {
+  if (!text) return '';
+  let h = esc(text);
+  // Re-enable Markdown links: [Title](#/festival/ID)
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, title, url) => {
+    const isExt = url.startsWith('http');
+    return '<a href="' + url + '" ' + (isExt ? 'target="_blank" rel="noopener"' : '') + ' class="ai-inline-link">' + title + '</a>';
+  });
+  // Headers
+  h = h.replace(/^### (.*$)/gim, '<h4 class="ai-h3">$1</h4>');
+  h = h.replace(/^#### (.*$)/gim, '<h5 class="ai-h4">$1</h5>');
+  // Bold
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Bullets
+  h = h.replace(/^[•\-\*] (.*$)/gim, '<li class="ai-bullet">$1</li>');
+  h = h.replace(/(<li class="ai-bullet">.*<\/li>(\r?\n)?)+/g, '<ul class="ai-list">$&</ul>');
+  // Quotes
+  h = h.replace(/^> (.*$)/gim, '<blockquote class="ai-quote">$1</blockquote>');
+  // Paragraph line breaks
+  h = h.replace(/\n\n/g, '<br><br>');
+  return h;
+}
+
+const AI_SAMPLE_QUESTIONS = {
+  Telugu: [
+    { text: "దీపావళి పండుగ ప్రాముఖ్యత మరియు దీపాలు వెలిగించే ఆచారం ఏమిటి?", religion: "Hinduism", tag: "🪔 దీపావళి" },
+    { text: "పొంగల్ పండుగలో తయారుచేసే సాంప్రదాయ వంటకాలు ఏమిటి?", religion: "Hinduism", tag: "🍲 పొంగల్ ఆహారం" },
+    { text: "ఈద్-ఉల్-ఫితర్ ఎలా జరుపుకుంటారు మరియు జకాత్ ప్రాముఖ్యత ఏమిటి?", religion: "Islam", tag: "☪️ ఈద్-ఉల్-ఫితర్" },
+    { text: "క్రిస్మస్ పండుగ పుట్టుక మరియు నేటివిటీ సంప్రదాయం వివరించండి.", religion: "Christianity", tag: "✝️ క్రిస్మస్" },
+    { text: "మీనాక్షి అమ్మవారి ఆలయం ఎక్కడ ఉంది మరియు అక్కడ జరిగే పండుగలు ఏమిటి?", religion: "Hinduism", tag: "📍 పవిత్ర స్థలాలు" }
+  ],
+  Hindi: [
+    { text: "दीपावली का सांस्कृतिक महत्व और दीप जलाने की परंपरा क्या है?", religion: "Hinduism", tag: "🪔 दीपावली" },
+    { text: "ईद-उल-फ़ितर कैसे मनाया जाता है और ज़कात-उल-फ़ितर क्या है?", religion: "Islam", tag: "☪️ ईद-उल-फ़ितर" },
+    { text: "पोंगल में बनाए जाने वाले पारंपरिक व्यंजन कौन-से हैं?", religion: "Hinduism", tag: "🍲 पोंगल व्यंजन" },
+    { text: "क्रिसमस का ऐतिहासिक मूल और चरनी (नेटीविटी) की परंपरा क्या है?", religion: "Christianity", tag: "✝️ क्रिसमस" },
+    { text: "मीनाक्षी अम्मन मंदिर कहाँ स्थित है और यहाँ कौन-से उत्सव मनाए जाते हैं?", religion: "Hinduism", tag: "📍 पवित्र स्थल" }
+  ],
+  Tamil: [
+    { text: "பொங்கல் பண்டிகையின் வரலாற்று பின்னணி மற்றும் பாரம்பரிய உணவுகள் யாவை?", religion: "Hinduism", tag: "🍲 பொங்கல்" },
+    { text: "தீபாவளி பண்டிகையின் கலாச்சார மற்றும் ஆன்மீக முக்கியத்துவம் என்ன?", religion: "Hinduism", tag: "🪔 தீபாவளி" },
+    { text: "ஈகைத் திருநாள் (ஈத்-உல்-பித்ர்) எவ்வாறு கொண்டாடப்படுகிறது?", religion: "Islam", tag: "☪️ ஈகைத் திருநாள்" },
+    { text: "கிறிஸ்துமஸ் பண்டிகையின் தோற்றம் மற்றும் மரபுகள் என்ன?", religion: "Christianity", tag: "✝️ கிறிஸ்துமஸ்" },
+    { text: "மீனாட்சி அம்மன் திருக்கோவில் எங்கு அமைந்துள்ளது?", religion: "Hinduism", tag: "📍 புனித தலம்" }
+  ],
+  English: [
+    { text: "What is the spiritual significance of Diwali and the lighting of diyas?", religion: "Hinduism", tag: "🪔 Diwali" },
+    { text: "What traditional foods are cooked during Pongal celebrations?", religion: "Hinduism", tag: "🍲 Pongal Foods" },
+    { text: "How is Eid-ul-Fitr celebrated and what is the importance of Zakat-al-Fitr?", religion: "Islam", tag: "☪️ Eid-ul-Fitr" },
+    { text: "What is the historical origin of Christmas and the Nativity tradition?", religion: "Christianity", tag: "✝️ Christmas" },
+    { text: "Where is the Meenakshi Amman Temple located and what festivals are linked to it?", religion: "Hinduism", tag: "📍 Sacred Sites" }
+  ]
+};
+
+function getAiCurrentQuestions() {
+  const lang = state.lang || 'English';
+  return AI_SAMPLE_QUESTIONS[lang] || AI_SAMPLE_QUESTIONS['English'];
+}
+
+function initAiGuideWidget() {
+  let root = document.getElementById('aiWidgetRoot');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'aiWidgetRoot';
+    root.innerHTML = `
+      <button id="aiFabBtn" class="aiFabBtn" onclick="toggleAiDrawer()" aria-label="Ask AI Cultural Heritage Guide" title="${t('Ask AI Guide')}">
+        <span class="aiFabIcon">✨</span>
+        <span class="aiFabText">${t('Ask AI')}</span>
+      </button>
+      <aside id="aiChatDrawer" class="aiDrawer" aria-hidden="true">
+        <header class="aiDrawerHeader">
+          <div class="aiHeaderLeft">
+            <div class="aiHeaderAvatar">✦</div>
+            <div class="aiHeaderTitles">
+              <h3>${t('AI Cultural Heritage Guide')}</h3>
+              <span>${t('Verified Heritage Knowledge Base')}</span>
+            </div>
+          </div>
+          <div class="aiHeaderRight">
+            <button class="aiHeaderBtn" onclick="clearAiChat()" title="${t('Clear Chat')}" aria-label="${t('Clear Chat')}">🗑️</button>
+            <a href="#/ai-guide" class="aiHeaderBtn" onclick="closeAiDrawer()" title="${t('Full Screen AI Guide')}" aria-label="${t('Full Screen AI Guide')}">⤢</a>
+            <button class="aiHeaderBtn" onclick="closeAiDrawer()" title="${t('Close')}" aria-label="${t('Close')}">✕</button>
+          </div>
+        </header>
+        <div id="aiDrawerMessages" class="aiMessages"></div>
+        <form class="aiInputArea" onsubmit="handleAiInputSubmit(event, 'drawer')">
+          <textarea id="aiDrawerInput" placeholder="${t('Ask anything about traditions, rituals, foods, clothing, calendar...')}" rows="1" onkeydown="handleAiTextareaKey(event, 'drawer')"></textarea>
+          <button type="submit" id="aiDrawerSendBtn" class="aiSendBtn" aria-label="${t('Ask question')}" title="${t('Ask question')}">➤</button>
+        </form>
+      </aside>
+    `;
+    document.body.appendChild(root);
+  }
+  renderAiDrawerMessages();
+}
+
+function toggleAiDrawer() {
+  const drawer = document.getElementById('aiChatDrawer');
+  if (!drawer) {
+    initAiGuideWidget();
+    return toggleAiDrawer();
+  }
+  const isOpen = drawer.classList.contains('open');
+  if (isOpen) {
+    closeAiDrawer();
+  } else {
+    openAiDrawer();
+  }
+}
+
+function openAiDrawer(prefill) {
+  initAiGuideWidget();
+  const drawer = document.getElementById('aiChatDrawer');
+  if (drawer) {
+    drawer.classList.add('open');
+    drawer.setAttribute('aria-hidden', 'false');
+    aiChatState.isOpen = true;
+    const input = document.getElementById('aiDrawerInput');
+    if (input) {
+      if (prefill) {
+        input.value = prefill;
+        sendAiQuestion(prefill, 'drawer');
+      } else {
+        setTimeout(() => input.focus(), 150);
+      }
+    }
+  }
+}
+
+function closeAiDrawer() {
+  const drawer = document.getElementById('aiChatDrawer');
+  if (drawer) {
+    drawer.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+    aiChatState.isOpen = false;
+  }
+}
+
+function clearAiChat() {
+  aiChatState.messages = [
+    {
+      role: 'bot',
+      text: "### 🌟 Welcome to the FaithFest AI Cultural Heritage Guide!\n\nI am grounded in **82 verified festivals**, **52 sacred sites**, traditional foods, rituals, attire, and calendar dates across **Hinduism, Islam, and Christianity**.\n\nAsk me anything in **English, తెలుగు, हिन्दी, or தமிழ்**!",
+      sources: [],
+      latency_ms: null,
+      timestamp: Date.now()
+    }
+  ];
+  renderAiDrawerMessages();
+  const pageContainer = document.getElementById('aiPageMessages');
+  if (pageContainer) renderAiPageMessages();
+}
+
+function renderAiDrawerMessages() {
+  const container = document.getElementById('aiDrawerMessages');
+  if (!container) return;
+
+  const questions = getAiCurrentQuestions();
+  let html = '';
+
+  if (aiChatState.messages.length <= 1) {
+    html += `
+      <div class="aiWelcomeCard">
+        <div class="aiWelcomeIcons">🕉️ ☪️ ✝️</div>
+        <h4>${t('AI Cultural Heritage Guide')}</h4>
+        <p>${t('Grounded in 82 Verified Festivals & 52 Sacred Sites across Hinduism, Islam, and Christianity.')}</p>
+        <div class="aiSuggestionsContainer">
+          <small class="aiSourcesLabel">${t('Suggested Questions')}:</small>
+          ${questions.map((q, idx) => `
+            <button type="button" class="aiSuggestionPill" onclick="selectAiSuggestedQuestion('${esc(q.text).replace(/'/g, "\\'")}', 'drawer')">
+              <span>${esc(q.tag || '✦')}</span>
+              <span>${esc(q.text)}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  aiChatState.messages.forEach((m, idx) => {
+    if (m.role === 'user') {
+      html += '<div class="aiMsg aiMsgUser">' + esc(m.text) + '</div>';
+    } else {
+      const renderedText = renderAiMarkdown(m.text);
+      let sourcesHtml = '';
+      if (m.sources && m.sources.length > 0) {
+        sourcesHtml = `
+          <div class="aiSourcesRow">
+            <span class="aiSourcesLabel">📚 ${t('Sources & Citations')}:</span>
+            <div class="aiSourceBadges">
+              ${m.sources.map(s => `
+                <a class="aiSourceBadge" href="${s.festival_id ? '#/festival/' + s.festival_id : '#/map'}">
+                  ${s.festival_id ? '🎉' : '📍'} ${esc(s.festival_name)} · <small>${esc(s.section)}</small>
+                </a>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+      const latencyBadge = m.latency_ms ? `<span class="aiLatencyBadge">⚡ ${m.latency_ms}ms · ${esc(m.model || 'RAG')}</span>` : '';
+      html += `
+        <div class="aiMsg aiMsgBot">
+          <div class="aiMsgBotContent">${renderedText}</div>
+          ${sourcesHtml}
+          <div class="aiActionsRow">
+            <div class="aiActionBtnsLeft">
+              <button type="button" class="aiActionBtn" onclick="copyAiMessage(${idx})" title="${t('Copy')}">📋 ${t('Copy')}</button>
+              <button type="button" class="aiActionBtn" onclick="speakAiMessage(${idx}, this)" title="${t('Listen')}">🔊 ${t('Listen')}</button>
+            </div>
+            ${latencyBadge}
+          </div>
+        </div>
+      `;
+    }
+  });
+
+  if (aiChatState.loading) {
+    html += `
+      <div class="aiTypingIndicator">
+        <div class="aiTypingDot"></div>
+        <div class="aiTypingDot"></div>
+        <div class="aiTypingDot"></div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+}
+
+function selectAiSuggestedQuestion(qText, target) {
+  sendAiQuestion(qText, target);
+}
+
+function handleAiTextareaKey(e, target) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    handleAiInputSubmit(e, target);
+  }
+}
+
+function handleAiInputSubmit(e, target) {
+  if (e) e.preventDefault();
+  const inputId = target === 'page' ? 'aiPageInput' : 'aiDrawerInput';
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) return;
+  input.value = '';
+  sendAiQuestion(val, target);
+}
+
+async function sendAiQuestion(queryText, target = 'drawer') {
+  if (!queryText || !queryText.trim() || aiChatState.loading) return;
+  const cleanQ = queryText.trim();
+
+  aiChatState.messages.push({
+    role: 'user',
+    text: cleanQ,
+    timestamp: Date.now()
+  });
+  aiChatState.loading = true;
+
+  renderAiDrawerMessages();
+  if (document.getElementById('aiPageMessages')) renderAiPageMessages();
+
+  const sendBtn = document.getElementById(target === 'page' ? 'aiPageSendBtn' : 'aiDrawerSendBtn');
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const res = await api('/api/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        query: cleanQ,
+        lang: state.lang,
+        religion: aiChatState.selectedReligion
+      })
+    });
+
+    aiChatState.messages.push({
+      role: 'bot',
+      text: res.answer,
+      sources: res.sources || [],
+      model: res.model,
+      latency_ms: res.latency_ms,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    aiChatState.messages.push({
+      role: 'bot',
+      text: 'Error retrieving heritage information: ' + esc(err.message),
+      sources: [],
+      timestamp: Date.now()
+    });
+  } finally {
+    aiChatState.loading = false;
+    if (sendBtn) sendBtn.disabled = false;
+    renderAiDrawerMessages();
+    if (document.getElementById('aiPageMessages')) renderAiPageMessages();
+  }
+}
+
+function copyAiMessage(idx) {
+  const m = aiChatState.messages[idx];
+  if (!m) return;
+  const clean = m.text.replace(/### |#### |\*\*|\[([^\]]+)\]\([^)]+\)/g, '$1');
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(clean).then(() => {
+      toast(t('Copied to clipboard'));
+    });
+  }
+}
+
+function speakAiMessage(idx, btn) {
+  const m = aiChatState.messages[idx];
+  if (!m || !('speechSynthesis' in window)) {
+    toast('Voice playback is not supported in this browser');
+    return;
+  }
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    if (btn) btn.classList.remove('active');
+    return;
+  }
+  const clean = m.text.replace(/[#*•>\[\]\(\)]/g, ' ').replace(/\s+/g, ' ');
+  const u = new SpeechSynthesisUtterance(clean);
+  const langMap = { Telugu: 'te-IN', Hindi: 'hi-IN', Tamil: 'ta-IN', English: 'en-US' };
+  u.lang = langMap[state.lang] || 'en-US';
+  u.rate = 0.95;
+  if (btn) btn.classList.add('active');
+  u.onend = () => { if (btn) btn.classList.remove('active'); };
+  u.onerror = () => { if (btn) btn.classList.remove('active'); };
+  window.speechSynthesis.speak(u);
+}
+
+// Dedicated Full-Page Route: #/ai-guide
+function aiGuidePage() {
+  const questions = getAiCurrentQuestions();
+  layout(`
+    <div class="aiGuidePage">
+      <div class="aiGuideHero">
+        <span class="aiHeroEyebrow">✨ ${t('AI Cultural Heritage Guide')}</span>
+        <h1>${t('Explore with AI')}</h1>
+        <p>${t('Grounded in 82 Verified Festivals & 52 Sacred Sites across Hinduism, Islam, and Christianity.')}</p>
+        <div class="aiStatsRow">
+          <div class="aiStatBox">
+            <b>82</b>
+            <span>${t('festivals & observances')}</span>
+          </div>
+          <div class="aiStatBox">
+            <b>52</b>
+            <span>${t('Sacred Sites')}</span>
+          </div>
+          <div class="aiStatBox">
+            <b>804</b>
+            <span>Verified Knowledge Chunks</span>
+          </div>
+          <div class="aiStatBox">
+            <b>4</b>
+            <span>Languages Supported</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="aiGuideLayout">
+        <aside class="aiGuideSidebar">
+          <div class="aiSidebarCard">
+            <h3>🪔 ${t('Heritage Topics')}</h3>
+            <div class="aiCategoryPills">
+              <button type="button" class="aiCategoryPill" onclick="openAiDrawer('Tell me about the origins and rituals of major festivals')">
+                <span>🪔</span>
+                <span>Rituals & Historical Origins</span>
+              </button>
+              <button type="button" class="aiCategoryPill" onclick="openAiDrawer('What traditional festive foods and sacred sweets are prepared across religions?')">
+                <span>🍲</span>
+                <span>Traditional Festive Cuisine</span>
+              </button>
+              <button type="button" class="aiCategoryPill" onclick="openAiDrawer('What traditional festive clothing and garments are worn?')">
+                <span>👗</span>
+                <span>Cultural Attire & Garments</span>
+              </button>
+              <button type="button" class="aiCategoryPill" onclick="openAiDrawer('What traditional music, dance and instruments are used in celebrations?')">
+                <span>🎶</span>
+                <span>Sacred Music & Dance</span>
+              </button>
+              <button type="button" class="aiCategoryPill" onclick="openAiDrawer('What are the key sacred pilgrimage sites in India and what festivals are celebrated there?')">
+                <span>🏛️</span>
+                <span>Sacred Pilgrimage Sites</span>
+              </button>
+              <button type="button" class="aiCategoryPill" onclick="openAiDrawer('What are the important festival dates and lunar observances in 2026 and 2027?')">
+                <span>📅</span>
+                <span>Calendar Observances</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="aiSidebarCard">
+            <h3>💬 ${t('Quick Questions')}</h3>
+            <div class="aiSuggestionsContainer">
+              ${questions.map(q => `
+                <button type="button" class="aiSuggestionPill" onclick="sendAiQuestion('${esc(q.text).replace(/'/g, "\\'")}', 'page')">
+                  <span>${esc(q.tag || '✦')}</span>
+                  <span>${esc(q.text)}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        </aside>
+
+        <section class="aiMainChatPanel">
+          <header class="aiDrawerHeader">
+            <div class="aiHeaderLeft">
+              <div class="aiHeaderAvatar">✦</div>
+              <div class="aiHeaderTitles">
+                <h3>${t('AI Cultural Heritage Guide')}</h3>
+                <span>${t('Verified Heritage Knowledge Base')}</span>
+              </div>
+            </div>
+            <div class="aiHeaderRight">
+              <button class="aiHeaderBtn" onclick="clearAiChat()" title="${t('Clear Chat')}">🗑️</button>
+            </div>
+          </header>
+          <div id="aiPageMessages" class="aiMessages"></div>
+          <form class="aiInputArea" onsubmit="handleAiInputSubmit(event, 'page')">
+            <textarea id="aiPageInput" placeholder="${t('Ask anything about traditions, rituals, foods, clothing, calendar...')}" rows="1" onkeydown="handleAiTextareaKey(event, 'page')"></textarea>
+            <button type="submit" id="aiPageSendBtn" class="aiSendBtn" aria-label="${t('Ask question')}" title="${t('Ask question')}">➤</button>
+          </form>
+        </section>
+      </div>
+    </div>
+  `);
+
+  renderAiPageMessages();
+}
+
+function renderAiPageMessages() {
+  const container = document.getElementById('aiPageMessages');
+  if (!container) return;
+
+  let html = '';
+
+  if (aiChatState.messages.length <= 1) {
+    html += `
+      <div class="aiWelcomeCard" style="margin-bottom:16px;">
+        <div class="aiWelcomeIcons">🕉️ ☪️ ✝️</div>
+        <h4>${t('AI Cultural Heritage Guide')}</h4>
+        <p>${t('Grounded in 82 Verified Festivals & 52 Sacred Sites across Hinduism, Islam, and Christianity.')}</p>
+      </div>
+    `;
+  }
+
+  aiChatState.messages.forEach((m, idx) => {
+    if (m.role === 'user') {
+      html += '<div class="aiMsg aiMsgUser">' + esc(m.text) + '</div>';
+    } else {
+      const renderedText = renderAiMarkdown(m.text);
+      let sourcesHtml = '';
+      if (m.sources && m.sources.length > 0) {
+        sourcesHtml = `
+          <div class="aiSourcesRow">
+            <span class="aiSourcesLabel">📚 ${t('Sources & Citations')}:</span>
+            <div class="aiSourceBadges">
+              ${m.sources.map(s => `
+                <a class="aiSourceBadge" href="${s.festival_id ? '#/festival/' + s.festival_id : '#/map'}">
+                  ${s.festival_id ? '🎉' : '📍'} ${esc(s.festival_name)} · <small>${esc(s.section)}</small>
+                </a>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+      const latencyBadge = m.latency_ms ? `<span class="aiLatencyBadge">⚡ ${m.latency_ms}ms · ${esc(m.model || 'RAG')}</span>` : '';
+      html += `
+        <div class="aiMsg aiMsgBot">
+          <div class="aiMsgBotContent">${renderedText}</div>
+          ${sourcesHtml}
+          <div class="aiActionsRow">
+            <div class="aiActionBtnsLeft">
+              <button type="button" class="aiActionBtn" onclick="copyAiMessage(${idx})" title="${t('Copy')}">📋 ${t('Copy')}</button>
+              <button type="button" class="aiActionBtn" onclick="speakAiMessage(${idx}, this)" title="${t('Listen')}">🔊 ${t('Listen')}</button>
+            </div>
+            ${latencyBadge}
+          </div>
+        </div>
+      `;
+    }
+  });
+
+  if (aiChatState.loading) {
+    html += `
+      <div class="aiTypingIndicator">
+        <div class="aiTypingDot"></div>
+        <div class="aiTypingDot"></div>
+        <div class="aiTypingDot"></div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
 }

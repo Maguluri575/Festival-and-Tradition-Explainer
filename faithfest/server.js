@@ -4,6 +4,8 @@ const path=require('path');
 const crypto=require('crypto');
 const {q,one,run,hashPassword,verifyPassword}=require('./db');
 const supabase = require('./config/supabase');
+const { ragEngine } = require('./rag_engine');
+const { llmService } = require('./llm_service');
 const PORT=Number(process.env.PORT||3000);
 const PUBLIC=path.join(__dirname,'public');
 const JWT_SECRET=process.env.JWT_SECRET||'faithfest-development-secret-change-me';
@@ -190,6 +192,72 @@ function publicFestival(id){return getFullFestival(id,false);}
 async function route(req,res){
  const u=new URL(req.url,'http://localhost');const p=u.pathname;const method=req.method;const user=auth(req);
  if(p==='/api/health')return json(res,200,{ok:true,service:'FaithFest',time:new Date().toISOString()});
+ if(p==='/api/ai/health'&&method==='GET'){
+  if(!ragEngine.initialized){try{ragEngine.buildIndex();}catch(e){}}
+  return json(res,200,{
+    ok:true,
+    service:'FaithFest AI Cultural Heritage Guide',
+    chunks_indexed:ragEngine.docCount,
+    initialized:ragEngine.initialized,
+    provider:process.env.GEMINI_API_KEY?'gemini':(process.env.OPENAI_API_KEY?'openai':'rag-knowledge-synthesizer'),
+    model:process.env.GEMINI_API_KEY?(process.env.GEMINI_MODEL||'gemini-1.5-flash'):'faithfest-rag-knowledge-synthesizer',
+    has_gemini_key:Boolean(process.env.GEMINI_API_KEY),
+    supported_languages:['English','Telugu','Hindi','Tamil']
+  });
+ }
+ if(p==='/api/ai/suggested-questions'&&method==='GET'){
+  const lang=u.searchParams.get('lang')||'English';
+  const questionsByLang={
+    Telugu:[
+      {text:"దీపావళి పండుగ ప్రాముఖ్యత మరియు దీపాలు వెలిగించే ఆచారం ఏమిటి?",religion:"Hinduism"},
+      {text:"పొంగల్ పండుగలో తయారుచేసే సాంప్రదాయ వంటకాలు ఏమిటి?",religion:"Hinduism"},
+      {text:"ఈద్-ఉల్-ఫితర్ ఎలా జరుపుకుంటారు మరియు జకాత్ ప్రాముఖ్యత ఏమిటి?",religion:"Islam"},
+      {text:"క్రిస్మస్ పండుగ పుట్టుక మరియు నేటివిటీ సంప్రదాయం వివరించండి.",religion:"Christianity"},
+      {text:"మీనాక్షి అమ్మవారి ఆలయం ఎక్కడ ఉంది మరియు అక్కడ జరిగే పండుగలు ఏమిటి?",religion:"Hinduism"}
+    ],
+    Hindi:[
+      {text:"दीपावली का सांस्कृतिक महत्व और दीप जलाने की परंपरा क्या है?",religion:"Hinduism"},
+      {text:"ईद-उल-फ़ितर कैसे मनाया जाता है और ज़कात-उल-फ़ितर क्या है?",religion:"Islam"},
+      {text:"पोंगल में बनाए जाने वाले पारंपरिक व्यंजन कौन-से हैं?",religion:"Hinduism"},
+      {text:"क्रिसमस का ऐतिहासिक मूल और चरनी (नेटीविटी) की परंपरा क्या है?",religion:"Christianity"},
+      {text:"मीनाक्षी अम्मन मंदिर कहाँ स्थित है और यहाँ कौन-से उत्सव मनाए जाते हैं?",religion:"Hinduism"}
+    ],
+    Tamil:[
+      {text:"பொங்கல் பண்டிகையின் வரலாற்று பின்னணி மற்றும் பாரம்பரிய உணவுகள் யாவை?",religion:"Hinduism"},
+      {text:"தீபாவளி பண்டிகையின் கலாச்சார மற்றும் ஆன்மீக முக்கியத்துவம் என்ன?",religion:"Hinduism"},
+      {text:"ஈகைத் திருநாள் (ஈத்-உல்-பித்ர்) எவ்வாறு கொண்டாடப்படுகிறது?",religion:"Islam"},
+      {text:"கிறிஸ்துமஸ் பண்டிகையின் தோற்றம் மற்றும் மரபுகள் என்ன?",religion:"Christianity"},
+      {text:"மீனாட்சி அம்மன் திருக்கோவில் எங்கு அமைந்துள்ளது?",religion:"Hinduism"}
+    ],
+    English:[
+      {text:"What is the spiritual significance of Diwali and the lighting of diyas?",religion:"Hinduism"},
+      {text:"What traditional foods are cooked during Pongal celebrations?",religion:"Hinduism"},
+      {text:"How is Eid-ul-Fitr celebrated and what is the importance of Zakat-al-Fitr?",religion:"Islam"},
+      {text:"What is the historical origin of Christmas and the Nativity tradition?",religion:"Christianity"},
+      {text:"Where is the Meenakshi Amman Temple located and what festivals are linked to it?",religion:"Hinduism"},
+      {text:"What is the symbolic meaning of the Easter candle and Easter eggs?",religion:"Christianity"}
+    ]
+  };
+  const list=questionsByLang[lang]||questionsByLang['English'];
+  return json(res,200,{success:true,lang,questions:list});
+ }
+ if(p==='/api/ai/chat'&&method==='POST'){
+  return body(req).then(async b=>{
+    if(!b||!b.query||!String(b.query).trim()){
+      return sendError(res,400,'Query text is required');
+    }
+    const query=String(b.query).trim();
+    const lang=b.lang||null;
+    const religion=b.religion||null;
+    try {
+      const response=await llmService.ask(query,{lang,religion,topK:b.topK||5});
+      return json(res,200,response);
+    } catch(err){
+      console.error('[AI Chat Error]',err);
+      return sendError(res,500,'AI processing error: '+err.message);
+    }
+  });
+ }
  if(p==='/api/test-supabase'&&method==='GET'){
   try {
    const { data: religions, error: relError } = await supabase
@@ -808,5 +876,8 @@ server.listen(PORT,()=>{
       await getFullFestivalFromSupabase(1);
       console.log('⚡ Supabase cloud cache initialized');
     } catch(e) {}
+    try { ragEngine.buildIndex(); } catch(e) { console.error('Error pre-indexing RAG engine:', e); }
   })();
 });
+
+module.exports = server;
