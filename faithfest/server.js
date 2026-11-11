@@ -198,9 +198,11 @@ async function getFullFestivalFromSupabase(id,includeUnpublished=false){
 function publicFestival(id){return getFullFestival(id,false);}
 
 async function route(req,res){
+ const parsedReq = new URL(req.url || '/', 'http://localhost');
+ const slugParam = (req.query && (req.query.slug || req.query.path)) || parsedReq.searchParams.get('slug') || parsedReq.searchParams.get('path');
  let rawUrl = req.url || '';
- if (req.query && (req.query.path || req.query.slug)) {
-   const sub = Array.isArray(req.query.slug || req.query.path) ? (req.query.slug || req.query.path).join('/') : (req.query.slug || req.query.path);
+ if (slugParam) {
+   const sub = Array.isArray(slugParam) ? slugParam.join('/') : slugParam;
    rawUrl = '/api/' + sub.replace(/^\/+/, '');
  } else if (!rawUrl.startsWith('/api/') || rawUrl === '/api' || rawUrl === '/api/' || rawUrl.startsWith('/api/index') || rawUrl.startsWith('/api/[...')) {
    const orig = req.headers['x-forwarded-url'] || req.headers['x-original-url'];
@@ -215,6 +217,16 @@ async function route(req,res){
  let p=u.pathname;
  if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
  const method=req.method;const user=auth(req);
+ if(p==='/api/debug'||u.searchParams.has('debug')) {
+  return json(res, 200, {
+    req_url: req.url,
+    rawUrl,
+    p,
+    query: req.query,
+    searchParams: Object.fromEntries(u.searchParams.entries()),
+    headers: req.headers
+  });
+ }
  if(p==='/api/health')return json(res,200,{ok:true,service:'FaithFest',time:new Date().toISOString()});
  if(p==='/api/ai/health'&&method==='GET'){
   if(!ragEngine.initialized){try{ragEngine.buildIndex();}catch(e){}}
@@ -879,7 +891,7 @@ async function adminRoute(req,res,u,user){
  }
  return sendError(res,404,'Admin endpoint not found');
 }
-function serveStatic(req,res,p){let file=p==='/'?'/index.html':p;file=path.normalize(file).replace(/^([.][.][/\\])+/, '');const fp=path.join(PUBLIC,file);if(!fp.startsWith(PUBLIC)||!fs.existsSync(fp)||fs.statSync(fp).isDirectory())return sendError(res,404,'Not found');const ext=path.extname(fp);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml'};res.writeHead(200,{'Content-Type':types[ext]||'application/octet-stream','Cache-Control':'no-cache, no-store, must-revalidate','Pragma':'no-cache','Expires':'0'});fs.createReadStream(fp).pipe(res);}
+function serveStatic(req,res,p){let file=p==='/'?'/index.html':p;file=path.normalize(file).replace(/^([.][.][/\\])+/, '');const fp=path.join(PUBLIC,file);if(!fp.startsWith(PUBLIC)||!fs.existsSync(fp)||fs.statSync(fp).isDirectory()){if(p.startsWith('/api')){return json(res,404,{error:'Not found',p:p,url:req.url,query:req.query,headers:req.headers});}return sendError(res,404,'Not found');}const ext=path.extname(fp);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml'};res.writeHead(200,{'Content-Type':types[ext]||'application/octet-stream','Cache-Control':'no-cache, no-store, must-revalidate','Pragma':'no-cache','Expires':'0'});fs.createReadStream(fp).pipe(res);}
 const handler = (req, res) => {
   try {
     Promise.resolve(route(req, res)).catch(e => {
