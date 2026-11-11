@@ -1,7 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { DatabaseSync } = require('node:sqlite');
+let DatabaseSync = null;
+try {
+  DatabaseSync = require('node:sqlite').DatabaseSync;
+} catch (e) {
+  DatabaseSync = null;
+}
 const crypto = require('crypto');
 
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION);
@@ -14,18 +19,28 @@ if (isServerless && fs.existsSync(existingSeed) && !fs.existsSync(dbPath)) {
   try { fs.copyFileSync(existingSeed, dbPath); } catch (e) {}
 }
 
-const db = new DatabaseSync(dbPath);
-try {
-  db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
-} catch (e) {}
+let db = null;
+if (DatabaseSync) {
+  try {
+    db = new DatabaseSync(dbPath);
+    try {
+      db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+    } catch (e) {}
+  } catch (err) {
+    db = null;
+  }
+}
 
 function q(sql, params=[]) {
+  if (!db) return [];
   try { return db.prepare(sql).all(...params); } catch (e) { return []; }
 }
 function one(sql, params=[]) {
+  if (!db) return null;
   try { return db.prepare(sql).get(...params); } catch (e) { return null; }
 }
 function run(sql, params=[]) {
+  if (!db) return { changes: 0, lastInsertRowid: 0 };
   try { return db.prepare(sql).run(...params); } catch (e) { return { changes: 0, lastInsertRowid: 0 }; }
 }
 function hashPassword(password, salt=crypto.randomBytes(16).toString('hex')) {
@@ -40,7 +55,9 @@ function verifyPassword(password, stored) {
 }
 module.exports={db,q,one,run,hashPassword,verifyPassword};
 
-try { autoSeed(); } catch (e) {}
+if (db) {
+  try { autoSeed(); } catch (e) {}
+}
 function seedReligion(name, description, icon) {
   let r = one('SELECT * FROM religions WHERE name=?',[name]);
   if (!r) { run('INSERT INTO religions(name,description,icon) VALUES(?,?,?)',[name,description,icon]); r=one('SELECT * FROM religions WHERE name=?',[name]); }

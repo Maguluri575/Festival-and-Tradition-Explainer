@@ -7,7 +7,15 @@ const supabase = require('./config/supabase');
 const { ragEngine } = require('./rag_engine');
 const { llmService } = require('./llm_service');
 const PORT=Number(process.env.PORT||3000);
-const PUBLIC=path.join(__dirname,'public');
+let PUBLIC=path.join(__dirname,'public');
+if(!fs.existsSync(PUBLIC)){
+  const alt=path.join(process.cwd(),'public');
+  if(fs.existsSync(alt)) PUBLIC=alt;
+  else {
+    const alt2=path.join(process.cwd(),'faithfest','public');
+    if(fs.existsSync(alt2)) PUBLIC=alt2;
+  }
+}
 const JWT_SECRET=process.env.JWT_SECRET||'faithfest-development-secret-change-me';
 function json(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function token(payload){const h=Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');const p=Buffer.from(JSON.stringify({...payload,exp:Math.floor(Date.now()/1000)+60*60*24})).toString('base64url');const s=crypto.createHmac('sha256',JWT_SECRET).update(h+'.'+p).digest('base64url');return h+'.'+p+'.'+s;}
@@ -856,28 +864,47 @@ async function adminRoute(req,res,u,user){
  return sendError(res,404,'Admin endpoint not found');
 }
 function serveStatic(req,res,p){let file=p==='/'?'/index.html':p;file=path.normalize(file).replace(/^([.][.][/\\])+/, '');const fp=path.join(PUBLIC,file);if(!fp.startsWith(PUBLIC)||!fs.existsSync(fp)||fs.statSync(fp).isDirectory())return sendError(res,404,'Not found');const ext=path.extname(fp);const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.svg':'image/svg+xml'};res.writeHead(200,{'Content-Type':types[ext]||'application/octet-stream','Cache-Control':'no-cache, no-store, must-revalidate','Pragma':'no-cache','Expires':'0'});fs.createReadStream(fp).pipe(res);}
-const server=http.createServer((req,res)=>{
+const handler = (req, res) => {
   try {
-    Promise.resolve(route(req,res)).catch(e=>{
+    Promise.resolve(route(req, res)).catch(e => {
       console.error(`[Server Error] ${req.method} ${req.url}:`, e);
-      if(!res.headersSent) sendError(res,500, e.message || 'Internal server error');
+      if (!res.headersSent) sendError(res, 500, e.message || 'Internal server error');
     });
   } catch(e) {
     console.error(`[Server Sync Error] ${req.method} ${req.url}:`, e);
-    if(!res.headersSent) sendError(res,500, e.message || 'Internal server error');
+    if (!res.headersSent) sendError(res, 500, e.message || 'Internal server error');
   }
-});
-server.listen(PORT,()=>{
-  console.log(`FaithFest running at http://localhost:${PORT}`);
+};
+
+const server = http.createServer(handler);
+
+const isServerless = Boolean(process.env.VERCEL || process.env.NOW_REGION || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
+if (!isServerless && require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`FaithFest running at http://localhost:${PORT}`);
+    (async () => {
+      try {
+        await getSupabaseReligions();
+        await getSupabaseFestivals();
+        await getFullFestivalFromSupabase(1);
+        console.log('⚡ Supabase cloud cache initialized');
+      } catch(e) {}
+      try { ragEngine.buildIndex(); } catch(e) { console.error('Error pre-indexing RAG engine:', e); }
+    })();
+  });
+} else {
   (async () => {
     try {
       await getSupabaseReligions();
       await getSupabaseFestivals();
-      await getFullFestivalFromSupabase(1);
-      console.log('⚡ Supabase cloud cache initialized');
     } catch(e) {}
-    try { ragEngine.buildIndex(); } catch(e) { console.error('Error pre-indexing RAG engine:', e); }
+    try { ragEngine.buildIndex(); } catch(e) {}
   })();
-});
+}
 
-module.exports = server;
+module.exports = handler;
+module.exports.default = handler;
+module.exports.handler = handler;
+module.exports.server = server;
+module.exports.route = route;

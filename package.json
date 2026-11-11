@@ -4,12 +4,17 @@
   "private": true,
   "description": "FaithFest - Interactive Religious Festival & Cultural Heritage Explorer",
   "engines": {
-    "node": ">=22.5.0"
+    "node": "22.x"
   },
   "scripts": {
-    "start": "npm start --prefix faithfest",
-    "dev": "npm run dev --prefix faithfest",
+    "build": "echo 'Build OK'",
+    "start": "node faithfest/server.js",
+    "dev": "node faithfest/server.js",
     "test": "npm test --prefix faithfest",
     "audit": "npm run audit --prefix faithfest"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "dotenv": "^18.0.9"
   }
 }

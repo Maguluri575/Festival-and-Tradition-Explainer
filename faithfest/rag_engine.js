@@ -59,12 +59,37 @@ class HeritageRAGEngine {
     this.termIndex.clear();
 
     // 1. Fetch Festivals with Religions
-    const festivals = q(`
-      SELECT f.*, r.name as religion, r.icon as religion_icon
-      FROM festivals f
-      JOIN religions r ON r.id = f.religion_id
-      WHERE f.status = 'published'
-    `);
+    let festivals = [];
+    try {
+      festivals = q(`
+        SELECT f.*, r.name as religion, r.icon as religion_icon
+        FROM festivals f
+        JOIN religions r ON r.id = f.religion_id
+        WHERE f.status = 'published'
+      `);
+    } catch(e) {
+      festivals = [];
+    }
+
+    if (!festivals || festivals.length === 0) {
+      const fs = require('fs');
+      const path = require('path');
+      let seedPath = path.join(__dirname, 'rag_chunks_seed.json');
+      if (!fs.existsSync(seedPath)) {
+        seedPath = path.join(process.cwd(), 'faithfest', 'rag_chunks_seed.json');
+      }
+      if (fs.existsSync(seedPath)) {
+        try {
+          const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
+          seedData.forEach(item => this.addChunk(item));
+          this.computeBM25Stats();
+          console.log(`[RAG Engine] Successfully indexed ${this.docCount} cultural heritage knowledge chunks from bundled seed!`);
+          return this.docCount;
+        } catch(e) {
+          console.warn('[RAG Engine] Failed to load seed JSON:', e.message);
+        }
+      }
+    }
 
     festivals.forEach(f => {
       // General Overview Chunk
@@ -224,6 +249,12 @@ class HeritageRAGEngine {
     });
 
     // Compute BM25 statistics
+    this.computeBM25Stats();
+    console.log(`[RAG Engine] Successfully indexed ${this.docCount} cultural heritage knowledge chunks!`);
+    return this.docCount;
+  }
+
+  computeBM25Stats() {
     this.docCount = this.chunks.length;
     let totalLength = 0;
     this.chunks.forEach((chunk, idx) => {
@@ -237,9 +268,6 @@ class HeritageRAGEngine {
     });
     this.avgDocLength = totalLength / Math.max(1, this.docCount);
     this.initialized = true;
-
-    console.log(`[RAG Engine] Successfully indexed ${this.docCount} cultural heritage knowledge chunks!`);
-    return this.docCount;
   }
 
   addChunk(data) {
