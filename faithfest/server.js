@@ -198,15 +198,23 @@ async function getFullFestivalFromSupabase(id,includeUnpublished=false){
 function publicFestival(id){return getFullFestival(id,false);}
 
 async function route(req,res){
- let rawUrl = req.headers['x-matched-path'] || req.headers['x-vercel-matched-path'] || req.headers['x-forwarded-uri'] || req.headers['x-original-url'] || req.url;
+ let rawUrl = req.url || '';
  if (req.query && (req.query.path || req.query.slug)) {
    const sub = Array.isArray(req.query.slug || req.query.path) ? (req.query.slug || req.query.path).join('/') : (req.query.slug || req.query.path);
-   rawUrl = '/api/' + sub;
+   rawUrl = '/api/' + sub.replace(/^\/+/, '');
+ } else if (!rawUrl.startsWith('/api/') || rawUrl === '/api' || rawUrl === '/api/' || rawUrl.startsWith('/api/index') || rawUrl.startsWith('/api/[...')) {
+   const orig = req.headers['x-forwarded-url'] || req.headers['x-original-url'];
+   if (orig && orig.startsWith('/api/') && !orig.startsWith('/api/index') && !orig.startsWith('/api/[...')) {
+     rawUrl = orig;
+   }
  }
  if (req.url && req.url.includes('?') && !rawUrl.includes('?')) {
    rawUrl += req.url.slice(req.url.indexOf('?'));
  }
- const u=new URL(rawUrl,'http://localhost');const p=u.pathname;const method=req.method;const user=auth(req);
+ const u=new URL(rawUrl,'http://localhost');
+ let p=u.pathname;
+ if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+ const method=req.method;const user=auth(req);
  if(p==='/api/health')return json(res,200,{ok:true,service:'FaithFest',time:new Date().toISOString()});
  if(p==='/api/ai/health'&&method==='GET'){
   if(!ragEngine.initialized){try{ragEngine.buildIndex();}catch(e){}}

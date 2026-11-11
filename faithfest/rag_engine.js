@@ -74,16 +74,20 @@ class HeritageRAGEngine {
     if (!festivals || festivals.length === 0) {
       const fs = require('fs');
       const path = require('path');
-      let seedPath = path.join(__dirname, 'rag_chunks_seed.json');
-      if (!fs.existsSync(seedPath)) {
-        seedPath = path.join(process.cwd(), 'faithfest', 'rag_chunks_seed.json');
-      }
-      if (fs.existsSync(seedPath)) {
+      const candidates = [
+        path.join(__dirname, 'rag_chunks_seed.json'),
+        path.join(__dirname, '..', 'rag_chunks_seed.json'),
+        path.join(__dirname, 'faithfest', 'rag_chunks_seed.json'),
+        path.join(process.cwd(), 'rag_chunks_seed.json'),
+        path.join(process.cwd(), 'faithfest', 'rag_chunks_seed.json')
+      ];
+      const seedPath = candidates.find(p => fs.existsSync(p));
+      if (seedPath) {
         try {
           const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
           seedData.forEach(item => this.addChunk(item));
           this.computeBM25Stats();
-          console.log(`[RAG Engine] Successfully indexed ${this.docCount} cultural heritage knowledge chunks from bundled seed!`);
+          console.log(`[RAG Engine] Successfully indexed ${this.docCount} cultural heritage knowledge chunks from bundled seed: ${seedPath}!`);
           return this.docCount;
         } catch(e) {
           console.warn('[RAG Engine] Failed to load seed JSON:', e.message);

@@ -29,9 +29,92 @@ class LLMService {
     return 'English';
   }
 
+  isGreeting(query) {
+    if (!query) return false;
+    const clean = String(query).trim().toLowerCase().replace(/[!.?,;:-]/g, '');
+    const greetings = [
+      'hi', 'hello', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening', 'howdy',
+      'namaste', 'namaskaram', 'namaskara', 'pranam', 'pranama', 'salaam', 'salam', 'as-salamu alaykum', 'assalamu alaikum',
+      'vanakkam', 'నమస్కారం', 'నమస్తే', 'హలో', 'హాయ్',
+      'नमस्ते', 'नमस्कार', 'प्रणाम', 'வணக்கம்', 'ஹலோ'
+    ];
+    return greetings.includes(clean);
+  }
+
+  getGreetingResponse(lang) {
+    if (lang === 'Telugu') {
+      return `🙏 **నమస్కారం! ఫెయిత్‌ఫెస్ట్ AI సాంస్కృతిక వారసత్వ మార్గదర్శికి స్వాగతం.**
+
+హిందూ, ఇస్లాం మరియు క్రైస్తవ మతాల పవిత్ర పండుగలు, వాటి చారిత్రక మూలాలు, సంప్రదాయ వంటకాలు, ప్రత్యేక దుస్తులు మరియు పవిత్ర క్షేత్రాల గురించి తెలుసుకోవడానికి నేను మీకు సహాయం చేయగలను.
+
+**మీరు నన్ను ఇలా అడగవచ్చు:**
+• *"దీపావళి పండుగ ప్రాముఖ్యత మరియు దీపాలు వెలిగించే ఆచారం ఏమిటి?"*
+• *"ఈద్-ఉల్-ఫితర్ ఎలా జరుపుకుంటారు మరియు జకాత్ ప్రాముఖ్యత ఏమిటి?"*
+• *"క్రిస్మస్ పండుగ పుట్టుక మరియు నేటివిటీ సంప్రదాయం వివరించండి."*
+• *"పొంగల్ పండుగలో తయారుచేసే సాంప్రదాయ వంటకాలు ఏమిటి?"*
+
+మీరు ఏ పండుగ లేదా సంప్రదాయం గురించి తెలుసుకోవాలనుకుంటున్నారు?`;
+    }
+    if (lang === 'Hindi') {
+      return `🙏 **नमस्ते! फेथफेस्ट एआई सांस्कृतिक विरासत गाइड में आपका स्वागत है।**
+
+मैं हिन्दू, इस्लाम और ईसाई धर्म के पवित्र त्योहारों, उनके ऐतिहासिक मूल, पारंपरिक व्यंजनों, परिधानों और पावन तीर्थस्थलों की प्रामाणिक जानकारी प्रदान करने के लिए उपस्थित हूँ।
+
+**आप मुझसे इस प्रकार के प्रश्न पूछ सकते हैं:**
+• *"दीपावली का सांस्कृतिक महत्व और दीप जलाने की परंपरा क्या है?"*
+• *"ईद-उल-फ़ितर कैसे मनाया जाता है और ज़कात-उल-फ़ितर क्या है?"*
+• *"क्रिसमस का ऐतिहासिक मूल और चरनी (नेटीविटी) की परंपरा क्या है?"*
+• *"पोंगल में बनाए जाने वाले पारंपरिक व्यंजन कौन-से हैं?"*
+
+आप किस त्योहार या परंपरा के बारे में जानना चाहते हैं?`;
+    }
+    if (lang === 'Tamil') {
+      return `🙏 **வணக்கம்! ஃபெய்த்ஃபெஸ்ட் AI கலாச்சார பாரம்பரிய வழிகாட்டிக்கு உங்களை வரவேற்கிறோம்.**
+
+இந்து, இஸ்லாம் மற்றும் கிறிஸ்தவ சமயங்களின் புனித விழாக்கள், அவற்றின் தோற்றம், பாரம்பரிய உணவுகள் மற்றும் வழிபாட்டு தலங்கள் குறித்து அறிய நான் உங்களுக்கு உதவ முடியும்.
+
+**நீங்கள் கேட்கக்கூடிய சில வினாக்கள்:**
+• *"பொங்கல் பண்டிகையின் வரலாற்று பின்னணி மற்றும் பாரம்பரிய உணவுகள் யாவை?"*
+• *"தீபாவளி பண்டிகையின் கலாச்சார முக்கியத்துவம் என்ன?"*
+• *"ஈகைத் திருநாள் (ஈத்-உல்-பித்ர்) எவ்வாறு கொண்டாடப்படுகிறது?"*
+• *"கிறிஸ்துமஸ் பண்டிகையின் தோற்றம் மற்றும் மரபுகள் என்ன?"*
+
+நீங்கள் எந்த திருவிழாவைப் பற்றி அறிய விரும்புகிறீர்கள்?`;
+    }
+    return `👋 **Hello and welcome to the FaithFest AI Cultural Heritage Guide!**
+
+I am your guide to exploring sacred traditions, historical origins, traditional foods, attire, and pilgrimage sites across **Hinduism**, **Islam**, and **Christianity**.
+
+**You can ask me questions like:**
+• *"What is the historical origin of Christmas and the Nativity tradition?"*
+• *"What is the spiritual significance of Diwali and the lighting of diyas?"*
+• *"How is Eid-ul-Fitr celebrated and what is the importance of Zakat-al-Fitr?"*
+• *"What traditional foods are cooked during Pongal celebrations?"*
+• *"Where is the Meenakshi Amman Temple located and what festivals are linked to it?"*
+
+What festival or cultural tradition would you like to explore today?`;
+  }
+
   async ask(query, options = {}) {
     const startTime = Date.now();
     const lang = options.lang || this.detectLanguage(query);
+
+    // Fast-path: Friendly conversational greeting
+    if (this.isGreeting(query)) {
+      return {
+        success: true,
+        query,
+        answer: this.getGreetingResponse(lang),
+        sources: [
+          { festival_name: 'FaithFest Heritage Guide', religion: 'All Faiths', section: 'Conversational Guide' }
+        ],
+        lang,
+        model: 'faithfest-greeting-guide',
+        chunks_count: 0,
+        latency_ms: Date.now() - startTime
+      };
+    }
+
     const topK = options.topK || Number(process.env.RAG_TOP_K || 5);
 
     // 1. RAG Retrieval Step

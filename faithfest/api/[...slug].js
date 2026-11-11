@@ -7,16 +7,36 @@ try {
 const serverModule = require('../server.js');
 const handler = serverModule.default || serverModule.handler || serverModule;
 
+function resolvePath(req) {
+  if (req.query && (req.query.slug || req.query.path)) {
+    const s = req.query.slug || req.query.path;
+    const sub = Array.isArray(s) ? s.join('/') : s;
+    return '/api/' + sub.replace(/^\/+/, '');
+  }
+
+  let raw = req.url || '';
+  if (raw.includes('?')) {
+    raw = raw.slice(0, raw.indexOf('?'));
+  }
+
+  if (raw.startsWith('/api/') && raw !== '/api/' && !raw.startsWith('/api/index') && !raw.startsWith('/api/[...')) {
+    return raw;
+  }
+
+  const orig = req.headers['x-forwarded-url'] || req.headers['x-original-url'];
+  if (orig && orig.startsWith('/api/') && orig !== '/api/' && !orig.startsWith('/api/index') && !orig.startsWith('/api/[...')) {
+    return orig.includes('?') ? orig.slice(0, orig.indexOf('?')) : orig;
+  }
+
+  return raw || '/api/health';
+}
+
 module.exports = (req, res) => {
-  if (req.headers['x-matched-path']) {
-    req.url = req.headers['x-matched-path'];
-  } else if (req.headers['x-vercel-matched-path']) {
-    req.url = req.headers['x-vercel-matched-path'];
-  } else if (req.headers['x-forwarded-uri']) {
-    req.url = req.headers['x-forwarded-uri'];
-  } else if (req.query && (req.query.path || req.query.slug)) {
-    const sub = Array.isArray(req.query.slug || req.query.path) ? (req.query.slug || req.query.path).join('/') : (req.query.slug || req.query.path);
-    req.url = '/api/' + sub;
+  const resolved = resolvePath(req);
+  if (req.url && req.url.includes('?') && !resolved.includes('?')) {
+    req.url = resolved + req.url.slice(req.url.indexOf('?'));
+  } else {
+    req.url = resolved;
   }
 
   if (typeof handler === 'function') {
@@ -26,4 +46,3 @@ module.exports = (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ error: 'Serverless handler failed to load' }));
 };
-
